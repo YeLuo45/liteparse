@@ -518,10 +518,10 @@ mod tests {
     fn test_is_windows_system_convert() {
         // SAFETY: tests run single-threaded for env modification scope
         unsafe { std::env::set_var("SystemRoot", "C:\\Windows") };
-        assert!(is_windows_system_convert("C:\\Windows\\System32\\convert.exe"));
         assert!(is_windows_system_convert(
-            "C:/Windows/System32/convert.exe"
+            "C:\\Windows\\System32\\convert.exe"
         ));
+        assert!(is_windows_system_convert("C:/Windows/System32/convert.exe"));
         assert!(!is_windows_system_convert(
             "C:\\Program Files\\ImageMagick\\convert.exe"
         ));
@@ -530,7 +530,10 @@ mod tests {
     #[test]
     fn test_guess_extension_from_data_png() {
         let png_header = [0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
-        assert_eq!(guess_extension_from_data(&png_header).as_deref(), Some("png"));
+        assert_eq!(
+            guess_extension_from_data(&png_header).as_deref(),
+            Some("png")
+        );
     }
 
     #[test]

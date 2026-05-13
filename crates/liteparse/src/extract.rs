@@ -715,7 +715,10 @@ mod tests {
 
     #[test]
     fn dedup_drops_earlier_exact_duplicate() {
-        let mut items = vec![ti("hello", 0.0, 0.0, 10.0, 5.0), ti("hello", 1.0, 0.0, 10.0, 5.0)];
+        let mut items = vec![
+            ti("hello", 0.0, 0.0, 10.0, 5.0),
+            ti("hello", 1.0, 0.0, 10.0, 5.0),
+        ];
         dedup_overlapping_items(&mut items);
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].x, 1.0);
@@ -730,7 +733,10 @@ mod tests {
 
     #[test]
     fn dedup_drops_earlier_when_different_text_overlaps_heavily() {
-        let mut items = vec![ti("old", 0.0, 0.0, 10.0, 5.0), ti("new", 0.0, 0.0, 10.0, 5.0)];
+        let mut items = vec![
+            ti("old", 0.0, 0.0, 10.0, 5.0),
+            ti("new", 0.0, 0.0, 10.0, 5.0),
+        ];
         dedup_overlapping_items(&mut items);
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].text, "new");
@@ -738,7 +744,10 @@ mod tests {
 
     #[test]
     fn dedup_keeps_both_when_different_text_overlaps_lightly() {
-        let mut items = vec![ti("aaa", 0.0, 0.0, 10.0, 5.0), ti("bbb", 9.0, 0.0, 10.0, 5.0)];
+        let mut items = vec![
+            ti("aaa", 0.0, 0.0, 10.0, 5.0),
+            ti("bbb", 9.0, 0.0, 10.0, 5.0),
+        ];
         dedup_overlapping_items(&mut items);
         assert_eq!(items.len(), 2);
     }
@@ -767,12 +776,19 @@ mod tests {
     #[test]
     fn adjust_angle_wraps_into_0_2pi() {
         let r = adjust_angle_for_rotation(0.0, 1);
-        assert!(r >= 0.0 && r < 2.0 * PI);
+        assert!((0.0..2.0 * PI).contains(&r));
     }
 
     #[test]
     fn decompose_scale_identity() {
-        let m = pdfium::Matrix { a: 1.0, b: 0.0, c: 0.0, d: 1.0, e: 0.0, f: 0.0 };
+        let m = pdfium::Matrix {
+            a: 1.0,
+            b: 0.0,
+            c: 0.0,
+            d: 1.0,
+            e: 0.0,
+            f: 0.0,
+        };
         let (sx, sy) = decompose_scale(&m);
         assert!((sx - 1.0).abs() < 1e-5);
         assert!((sy - 1.0).abs() < 1e-5);
@@ -780,7 +796,14 @@ mod tests {
 
     #[test]
     fn decompose_scale_uniform() {
-        let m = pdfium::Matrix { a: 2.0, b: 0.0, c: 0.0, d: 2.0, e: 0.0, f: 0.0 };
+        let m = pdfium::Matrix {
+            a: 2.0,
+            b: 0.0,
+            c: 0.0,
+            d: 2.0,
+            e: 0.0,
+            f: 0.0,
+        };
         let (sx, sy) = decompose_scale(&m);
         assert!((sx - 2.0).abs() < 1e-4);
         assert!((sy - 2.0).abs() < 1e-4);
@@ -813,9 +836,19 @@ mod tests {
 
     #[test]
     fn color_to_argb_hex_formats() {
-        let c = pdfium::Color { r: 0xAB, g: 0xCD, b: 0xEF, a: 0x12 };
+        let c = pdfium::Color {
+            r: 0xAB,
+            g: 0xCD,
+            b: 0xEF,
+            a: 0x12,
+        };
         assert_eq!(color_to_argb_hex(&c), "12abcdef");
-        let z = pdfium::Color { r: 0, g: 0, b: 0, a: 0 };
+        let z = pdfium::Color {
+            r: 0,
+            g: 0,
+            b: 0,
+            a: 0,
+        };
         assert_eq!(color_to_argb_hex(&z), "00000000");
     }
 

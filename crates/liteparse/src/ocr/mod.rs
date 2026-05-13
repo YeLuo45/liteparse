@@ -63,16 +63,4 @@ mod tests {
         assert_eq!(r[0].bbox, [0.0, 0.0, 10.0, 10.0]);
         assert!((r[0].confidence - 0.9).abs() < 1e-6);
     }
-
-    #[test]
-    fn test_ocr_result_clone() {
-        let r = OcrResult {
-            text: "hi".into(),
-            bbox: [1.0, 2.0, 3.0, 4.0],
-            confidence: 0.5,
-        };
-        let c = r.clone();
-        assert_eq!(c.text, "hi");
-        assert_eq!(c.bbox, [1.0, 2.0, 3.0, 4.0]);
-    }
 }

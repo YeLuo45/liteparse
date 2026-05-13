@@ -144,8 +144,14 @@ mod tests {
 
     #[test]
     fn output_format_serializes() {
-        assert_eq!(serde_json::to_string(&OutputFormat::Json).unwrap(), "\"Json\"");
-        assert_eq!(serde_json::to_string(&OutputFormat::Text).unwrap(), "\"Text\"");
+        assert_eq!(
+            serde_json::to_string(&OutputFormat::Json).unwrap(),
+            "\"Json\""
+        );
+        assert_eq!(
+            serde_json::to_string(&OutputFormat::Text).unwrap(),
+            "\"Text\""
+        );
     }
 
     #[test]

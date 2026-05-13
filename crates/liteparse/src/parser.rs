@@ -134,6 +134,7 @@ mod tests {
     use crate::types::ParsedPage;
 
     #[test]
+    #[allow(clippy::field_reassign_with_default)]
     fn test_new_stores_config() {
         let mut cfg = LiteParseConfig::default();
         cfg.ocr_enabled = false;
@@ -157,6 +158,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::field_reassign_with_default)]
     fn test_format_json() {
         let mut cfg = LiteParseConfig::default();
         cfg.output_format = OutputFormat::Json;
@@ -167,6 +169,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::field_reassign_with_default)]
     fn test_format_text() {
         let mut cfg = LiteParseConfig::default();
         cfg.output_format = OutputFormat::Text;

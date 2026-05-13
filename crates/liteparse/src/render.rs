@@ -118,7 +118,12 @@ mod tests {
 
     #[test]
     fn test_screenshot_missing_file_errors() {
-        let r = screenshot("/nonexistent/path/does_not_exist.pdf", 1, 72.0, "/tmp/out.png");
+        let r = screenshot(
+            "/nonexistent/path/does_not_exist.pdf",
+            1,
+            72.0,
+            "/tmp/out.png",
+        );
         assert!(r.is_err());
     }
 
