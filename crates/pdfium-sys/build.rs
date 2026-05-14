@@ -40,7 +40,10 @@ fn main() {
     // dylib's install name is @rpath/libpdfium.dylib.
     // On Windows the DLL lives in bin/, not lib/.
     let dll_dir = if target_os == "windows" {
-        lib_dir.parent().map(|p| p.join("bin")).unwrap_or(lib_dir.clone())
+        lib_dir
+            .parent()
+            .map(|p| p.join("bin"))
+            .unwrap_or(lib_dir.clone())
     } else {
         lib_dir.clone()
     };
