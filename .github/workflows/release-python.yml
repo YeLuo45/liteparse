@@ -94,7 +94,7 @@ jobs:
         with:
           target: ${{ matrix.target }}
           args: --release --out dist --find-interpreter
-          manylinux: auto
+          manylinux: 2_28
           working-directory: packages/python
           before-script-linux: |
             if command -v yum &> /dev/null; then
