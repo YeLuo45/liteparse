@@ -22,14 +22,29 @@ fn main() {
         )
     });
 
+    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+
     println!("cargo:rustc-link-search=native={}", lib_dir.display());
-    println!("cargo:rustc-link-lib=dylib=pdfium");
+
+    // On Windows MSVC the import library is named `pdfium.dll.lib`, so
+    // we must pass `pdfium.dll` as the lib name (the linker appends `.lib`).
+    if target_os == "windows" {
+        println!("cargo:rustc-link-lib=dylib=pdfium.dll");
+    } else {
+        println!("cargo:rustc-link-lib=dylib=pdfium");
+    }
     println!("cargo:lib_path={}", lib_dir.display());
 
     // Copy the dylib into OUT_DIR so it's on the rpath that cargo sets
     // for crates with `links = ...`. This is needed on macOS where the
     // dylib's install name is @rpath/libpdfium.dylib.
-    copy_dylib_to_target_deps(&lib_dir);
+    // On Windows the DLL lives in bin/, not lib/.
+    let dll_dir = if target_os == "windows" {
+        lib_dir.parent().map(|p| p.join("bin")).unwrap_or(lib_dir.clone())
+    } else {
+        lib_dir.clone()
+    };
+    copy_dylib_to_target_deps(&dll_dir);
 
     run_bindgen(&include_dir);
 }
