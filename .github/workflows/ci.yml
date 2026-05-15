@@ -55,23 +55,6 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install tesseract leptonica
 
-      - name: Install system dependencies (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $vcpkg = $env:VCPKG_INSTALLATION_ROOT
-          & "$vcpkg\vcpkg" install tesseract:x64-windows
-
-      - name: Set vcpkg env vars (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $vcpkg = $env:VCPKG_INSTALLATION_ROOT
-          echo "VCPKG_ROOT=$vcpkg" >> $env:GITHUB_ENV
-          echo "VCPKG_DEFAULT_TRIPLET=x64-windows" >> $env:GITHUB_ENV
-          echo "TESSERACT_INCLUDE_PATH=$vcpkg\installed\x64-windows\include" >> $env:GITHUB_ENV
-          echo "TESSERACT_LIB_PATH=$vcpkg\installed\x64-windows\lib" >> $env:GITHUB_ENV
-
       - uses: actions/cache@v4
         with:
           path: |
@@ -82,6 +65,11 @@ jobs:
             ${{ runner.os == 'Windows' && format('{0}\pdfium-rs', env.LOCALAPPDATA) || '' }}
             target
           key: ${{ runner.os }}-cargo-build-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Force Ninja generator (Windows)
+        if: runner.os == 'Windows'
+        run: echo "CMAKE_GENERATOR=Ninja" >> $GITHUB_ENV
+        shell: bash
 
       - run: cargo build --workspace --all-targets --exclude liteparse-python --exclude liteparse-napi
       - run: cargo test --workspace --exclude liteparse-python --exclude liteparse-napi

@@ -60,6 +60,11 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install tesseract leptonica
 
+      - name: Force Ninja generator (Windows)
+        if: runner.os == 'Windows'
+        run: echo "CMAKE_GENERATOR=Ninja" >> $GITHUB_ENV
+        shell: bash
+
       - uses: actions/cache@v4
         with:
           path: |
