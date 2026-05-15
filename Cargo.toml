@@ -6,6 +6,7 @@ members = [
     "crates/liteparse",
     "crates/liteparse-napi",
     "crates/liteparse-python",
+    "crates/liteparse-wasm",
 ]
 
 [workspace.package]

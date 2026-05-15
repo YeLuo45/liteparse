@@ -1,5 +1,8 @@
+use std::pin::Pin;
+
+#[cfg(not(target_arch = "wasm32"))]
 pub mod http_simple;
-#[cfg(feature = "tesseract")]
+#[cfg(all(feature = "tesseract", not(target_arch = "wasm32")))]
 pub mod tesseract;
 
 /// A single word-level OCR result with bounding box and confidence.
@@ -16,15 +19,33 @@ pub struct OcrOptions {
     pub language: String,
 }
 
-pub trait OcrEngine {
+/// On native targets, `OcrEngine` and its returned futures must be `Send` so
+/// they can be moved across thread boundaries by the multi-threaded tokio
+/// runtime. On wasm32 there is only a single thread and JS-backed engines
+/// hold `!Send` types (`JsValue`, `js_sys::Function`, ...), so we relax
+/// those bounds for the wasm target.
+#[cfg(not(target_arch = "wasm32"))]
+pub trait OcrEngine: Send + Sync {
     fn name(&self) -> &str;
-    fn recognize(
-        &self,
-        image_data: &[u8],
+    fn recognize<'a, 'b: 'a, 'c: 'a>(
+        &'a self,
+        image_data: &'c [u8],
         width: u32,
         height: u32,
-        options: &OcrOptions,
-    ) -> Result<Vec<OcrResult>, Box<dyn std::error::Error>>;
+        options: &'b OcrOptions,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<OcrResult>, Box<dyn std::error::Error>>> + Send + '_>>;
+}
+
+#[cfg(target_arch = "wasm32")]
+pub trait OcrEngine {
+    fn name(&self) -> &str;
+    fn recognize<'a, 'b: 'a, 'c: 'a>(
+        &'a self,
+        image_data: &'c [u8],
+        width: u32,
+        height: u32,
+        options: &'b OcrOptions,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<OcrResult>, Box<dyn std::error::Error>>> + '_>>;
 }
 
 #[cfg(test)]
@@ -36,29 +57,35 @@ mod tests {
         fn name(&self) -> &str {
             "dummy"
         }
-        fn recognize(
-            &self,
-            _image_data: &[u8],
+        fn recognize<'a, 'b: 'a, 'c: 'a>(
+            &'a self,
+            _image_data: &'c [u8],
             _width: u32,
             _height: u32,
-            options: &OcrOptions,
-        ) -> Result<Vec<OcrResult>, Box<dyn std::error::Error>> {
-            Ok(vec![OcrResult {
-                text: format!("lang={}", options.language),
-                bbox: [0.0, 0.0, 10.0, 10.0],
-                confidence: 0.9,
-            }])
+            options: &'b OcrOptions,
+        ) -> Pin<
+            Box<
+                dyn Future<Output = Result<Vec<OcrResult>, Box<dyn std::error::Error>>> + Send + '_,
+            >,
+        > {
+            Box::pin(async move {
+                Ok(vec![OcrResult {
+                    text: format!("lang={}", options.language),
+                    bbox: [0.0, 0.0, 10.0, 10.0],
+                    confidence: 0.9,
+                }])
+            })
         }
     }
 
-    #[test]
-    fn test_engine_trait_object() {
+    #[tokio::test]
+    async fn test_engine_trait_object() {
         let engine: Box<dyn OcrEngine> = Box::new(DummyEngine);
         assert_eq!(engine.name(), "dummy");
         let opts = OcrOptions {
             language: "eng".into(),
         };
-        let r = engine.recognize(&[], 1, 1, &opts).unwrap();
+        let r = engine.recognize(&[], 1, 1, &opts).await.unwrap();
         assert_eq!(r.len(), 1);
         assert_eq!(r[0].text, "lang=eng");
         assert_eq!(r[0].bbox, [0.0, 0.0, 10.0, 10.0]);

@@ -1,7 +1,9 @@
 use crate::config::{LiteParseConfig, OutputFormat, parse_target_pages};
+#[cfg(not(target_arch = "wasm32"))]
 use crate::conversion;
 use crate::extract;
 use crate::ocr::OcrEngine;
+#[cfg(not(target_arch = "wasm32"))]
 use crate::ocr::http_simple::HttpOcrEngine;
 #[cfg(feature = "tesseract")]
 use crate::ocr::tesseract::TesseractOcrEngine;
@@ -21,17 +23,36 @@ pub struct ParseResult {
 /// Main LiteParse orchestrator.
 pub struct LiteParse {
     config: LiteParseConfig,
+    /// Optional caller-provided OCR engine. When set, this overrides the
+    /// built-in selection logic (HTTP OCR / Tesseract). This is the primary
+    /// mechanism for plugging an OCR engine in environments without the
+    /// built-ins (e.g. WASM, where the JS side supplies a callback engine).
+    ocr_engine_override: Option<std::sync::Arc<dyn OcrEngine>>,
 }
 
 impl LiteParse {
     pub fn new(config: LiteParseConfig) -> Self {
-        Self { config }
+        Self {
+            config,
+            ocr_engine_override: None,
+        }
+    }
+
+    /// Override the OCR engine. When set, the engine is used regardless of
+    /// `ocr_server_url` / built-in Tesseract availability.
+    pub fn with_ocr_engine(mut self, engine: std::sync::Arc<dyn OcrEngine>) -> Self {
+        self.ocr_engine_override = Some(engine);
+        self
     }
 
     /// Parse a document from a file path, returning structured results.
     ///
     /// Non-PDF files are automatically converted to PDF first (requires
     /// LibreOffice/ImageMagick on the system).
+    ///
+    /// Not available on `wasm32` — the browser has no filesystem. Use
+    /// [`LiteParse::parse_input`] with [`PdfInput::Bytes`] instead.
+    #[cfg(not(target_arch = "wasm32"))]
     pub async fn parse(&self, input: &str) -> Result<ParseResult, Box<dyn std::error::Error>> {
         // Resolve file path to a PdfInput (convert non-PDFs first)
         let pdf_input = if conversion::is_pdf(input) {
@@ -59,7 +80,7 @@ impl LiteParse {
             }
         };
 
-        let t0 = std::time::Instant::now();
+        let t0 = web_time::Instant::now();
 
         // Determine which pages to extract
         let target_pages = self
@@ -77,7 +98,7 @@ impl LiteParse {
             self.config.max_pages,
             self.config.password.as_deref(),
         )?;
-        let t1 = std::time::Instant::now();
+        let t1 = web_time::Instant::now();
         log(&format!(
             "[liteparse] extract: {:.1}ms ({} pages)",
             t1.duration_since(t0).as_secs_f64() * 1000.0,
@@ -86,16 +107,33 @@ impl LiteParse {
 
         // OCR pass
         if self.config.ocr_enabled {
-            let engine: Box<dyn OcrEngine> = if let Some(ref url) = self.config.ocr_server_url {
-                Box::new(HttpOcrEngine::new(url.clone()))
+            let engine: std::sync::Arc<dyn OcrEngine> = if let Some(e) =
+                self.ocr_engine_override.clone()
+            {
+                e
             } else {
-                #[cfg(feature = "tesseract")]
+                #[cfg(not(target_arch = "wasm32"))]
                 {
-                    Box::new(TesseractOcrEngine::new(self.config.tessdata_path.clone()))
+                    if let Some(ref url) = self.config.ocr_server_url {
+                        std::sync::Arc::new(HttpOcrEngine::new(url.clone()))
+                    } else {
+                        #[cfg(feature = "tesseract")]
+                        {
+                            std::sync::Arc::new(TesseractOcrEngine::new(
+                                self.config.tessdata_path.clone(),
+                            ))
+                        }
+                        #[cfg(not(feature = "tesseract"))]
+                        {
+                            return Err("OCR enabled but no --ocr-server-url provided and tesseract feature is disabled".into());
+                        }
+                    }
                 }
-                #[cfg(not(feature = "tesseract"))]
+                #[cfg(target_arch = "wasm32")]
                 {
-                    return Err("OCR enabled but no --ocr-server-url provided and tesseract feature is disabled".into());
+                    return Err(
+                        "OCR enabled but no `ocrEngine` callback was provided (WASM builds have no built-in OCR engine)".into(),
+                    );
                 }
             };
             ocr_merge::ocr_and_merge_pages_from_input(
@@ -104,9 +142,10 @@ impl LiteParse {
                 self.config.dpi,
                 engine.as_ref(),
                 &self.config.ocr_language,
-            )?;
+            )
+            .await?;
         }
-        let t_ocr = std::time::Instant::now();
+        let t_ocr = web_time::Instant::now();
         log(&format!(
             "[liteparse] ocr: {:.1}ms",
             t_ocr.duration_since(t1).as_secs_f64() * 1000.0
@@ -114,7 +153,7 @@ impl LiteParse {
 
         // Grid projection
         let parsed_pages = projection::project_pages_to_grid(pages);
-        let t2 = std::time::Instant::now();
+        let t2 = web_time::Instant::now();
         log(&format!(
             "[liteparse] project: {:.1}ms",
             t2.duration_since(t_ocr).as_secs_f64() * 1000.0

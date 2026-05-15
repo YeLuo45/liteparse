@@ -305,7 +305,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut errors = 0usize;
 
             for file_path in &files {
-                let t0 = std::time::Instant::now();
+                let t0 = web_time::Instant::now();
 
                 // Build output path: mirror directory structure
                 let rel = file_path.strip_prefix(&cmd.input_dir).unwrap_or(file_path);

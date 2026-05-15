@@ -23,31 +23,40 @@ fn main() {
     });
 
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
 
     println!("cargo:rustc-link-search=native={}", lib_dir.display());
 
-    // On Windows MSVC the import library is named `pdfium.dll.lib`, so
-    // we must pass `pdfium.dll` as the lib name (the linker appends `.lib`).
-    if target_os == "windows" {
-        println!("cargo:rustc-link-lib=dylib=pdfium.dll");
+    if target_arch == "wasm32" {
+        // For wasm targets, pdfium is shipped as a static archive (libpdfium.a)
+        // and linked statically into the final .wasm module. There is no
+        // dynamic loading and no need to copy any shared library.
+        println!("cargo:rustc-link-lib=static=pdfium");
+        println!("cargo:lib_path={}", lib_dir.display());
     } else {
-        println!("cargo:rustc-link-lib=dylib=pdfium");
-    }
-    println!("cargo:lib_path={}", lib_dir.display());
+        // On Windows MSVC the import library is named `pdfium.dll.lib`, so
+        // we must pass `pdfium.dll` as the lib name (the linker appends `.lib`).
+        if target_os == "windows" {
+            println!("cargo:rustc-link-lib=dylib=pdfium.dll");
+        } else {
+            println!("cargo:rustc-link-lib=dylib=pdfium");
+        }
+        println!("cargo:lib_path={}", lib_dir.display());
 
-    // Copy the dylib into OUT_DIR so it's on the rpath that cargo sets
-    // for crates with `links = ...`. This is needed on macOS where the
-    // dylib's install name is @rpath/libpdfium.dylib.
-    // On Windows the DLL lives in bin/, not lib/.
-    let dll_dir = if target_os == "windows" {
-        lib_dir
-            .parent()
-            .map(|p| p.join("bin"))
-            .unwrap_or(lib_dir.clone())
-    } else {
-        lib_dir.clone()
-    };
-    copy_dylib_to_target_deps(&dll_dir);
+        // Copy the dylib into OUT_DIR so it's on the rpath that cargo sets
+        // for crates with `links = ...`. This is needed on macOS where the
+        // dylib's install name is @rpath/libpdfium.dylib.
+        // On Windows the DLL lives in bin/, not lib/.
+        let dll_dir = if target_os == "windows" {
+            lib_dir
+                .parent()
+                .map(|p| p.join("bin"))
+                .unwrap_or(lib_dir.clone())
+        } else {
+            lib_dir.clone()
+        };
+        copy_dylib_to_target_deps(&dll_dir);
+    }
 
     run_bindgen(&include_dir);
 }

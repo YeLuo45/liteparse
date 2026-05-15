@@ -7,7 +7,7 @@ use pdfium::Library;
 ///
 /// OCR is triggered when a page has fewer than 100 characters of native text
 /// or has embedded images.
-pub fn ocr_and_merge_pages(
+pub async fn ocr_and_merge_pages(
     pages: &mut [Page],
     pdf_path: &str,
     dpi: f32,
@@ -21,54 +21,90 @@ pub fn ocr_and_merge_pages(
         ocr_engine,
         ocr_language,
     )
+    .await
 }
 
 /// Run OCR on pages that need it and merge results into text_items.
 /// Accepts a `PdfInput` for either file path or in-memory bytes.
-pub fn ocr_and_merge_pages_from_input(
+pub async fn ocr_and_merge_pages_from_input(
     pages: &mut [Page],
     input: &PdfInput,
     dpi: f32,
     ocr_engine: &dyn OcrEngine,
     ocr_language: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let lib = Library::init();
-    let document = match input {
-        PdfInput::Path(path) => lib.load_document(path, None)?,
-        PdfInput::Bytes(data) => lib.load_document_from_bytes(data, None)?,
+    // Phase 1: render all pages that need OCR. The pdfium `Document` holds raw
+    // pointers that are not `Send`, so we must not hold it across an `.await`.
+    // Render synchronously into owned buffers and drop the document before
+    // awaiting the OCR engine.
+    struct RenderedPage {
+        idx: usize,
+        rgb_bytes: Vec<u8>,
+        width: u32,
+        height: u32,
+    }
+
+    let rendered: Vec<RenderedPage> = {
+        let lib = Library::init();
+        let document = match input {
+            PdfInput::Path(path) => lib.load_document(path, None)?,
+            PdfInput::Bytes(data) => lib.load_document_from_bytes(data, None)?,
+        };
+
+        let mut rendered = Vec::new();
+        for (idx, page) in pages.iter().enumerate() {
+            let text_length: usize = page.text_items.iter().map(|item| item.text.len()).sum();
+            let page_obj = document.page((page.page_number - 1) as i32)?;
+            let has_images = !page_obj.image_bounds(25.0, 0.9).is_empty();
+
+            if text_length >= 100 && !has_images {
+                continue;
+            }
+
+            eprintln!(
+                "[ocr] page {} needs OCR (text_length={}, has_images={})",
+                page.page_number, text_length, has_images
+            );
+
+            let bitmap = page_obj.render(dpi)?;
+            let width = bitmap.width() as u32;
+            let height = bitmap.height() as u32;
+            let rgba = bitmap.to_rgba();
+
+            let img: ImageBuffer<Rgba<u8>, Vec<u8>> = ImageBuffer::from_raw(width, height, rgba)
+                .ok_or("failed to create image buffer")?;
+            let rgb_img = image::DynamicImage::ImageRgba8(img).to_rgb8();
+            let rgb_bytes = rgb_img.into_raw();
+
+            rendered.push(RenderedPage {
+                idx,
+                rgb_bytes,
+                width,
+                height,
+            });
+        }
+        rendered
+        // `document` and `lib` are dropped here before any `.await`
     };
 
-    for page in pages.iter_mut() {
-        let text_length: usize = page.text_items.iter().map(|item| item.text.len()).sum();
-        let page_obj = document.page((page.page_number - 1) as i32)?;
-        let has_images = !page_obj.image_bounds(25.0, 0.9).is_empty();
-
-        if text_length >= 100 && !has_images {
-            continue;
-        }
-
-        eprintln!(
-            "[ocr] page {} needs OCR (text_length={}, has_images={})",
-            page.page_number, text_length, has_images
-        );
-
-        // Render page to raw RGB pixels
-        let bitmap = page_obj.render(dpi)?;
-        let width = bitmap.width() as u32;
-        let height = bitmap.height() as u32;
-        let rgba = bitmap.to_rgba();
-
-        // Convert RGBA to RGB for tesseract
-        let img: ImageBuffer<Rgba<u8>, Vec<u8>> =
-            ImageBuffer::from_raw(width, height, rgba).ok_or("failed to create image buffer")?;
-        let rgb_img = image::DynamicImage::ImageRgba8(img).to_rgb8();
-        let rgb_bytes = rgb_img.into_raw();
+    // Phase 2: run OCR (async) on rendered pages and merge results back.
+    for r in rendered {
+        let RenderedPage {
+            idx,
+            rgb_bytes,
+            width,
+            height,
+        } = r;
+        let page = &mut pages[idx];
 
         let options = OcrOptions {
             language: ocr_language.to_string(),
         };
 
-        let ocr_results = match ocr_engine.recognize(&rgb_bytes, width, height, &options) {
+        let ocr_results = match ocr_engine
+            .recognize(&rgb_bytes, width, height, &options)
+            .await
+        {
             Ok(results) => results,
             Err(e) => {
                 eprintln!("[ocr] failed for page {}: {}", page.page_number, e);

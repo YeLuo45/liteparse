@@ -1,6 +1,6 @@
-use std::time::Duration;
+use std::{pin::Pin, time::Duration};
 
-use reqwest::blocking::{
+use reqwest::{
     Client,
     multipart::{Form, Part},
 };
@@ -39,14 +39,14 @@ impl HttpOcrEngine {
         }
     }
 
-    fn _recognize_batch(
+    async fn _recognize_batch(
         &self,
         images: Vec<&[u8]>,
         options: OcrOptions,
     ) -> Result<Vec<Vec<OcrResult>>, Box<dyn std::error::Error>> {
         let mut results: Vec<Vec<OcrResult>> = vec![];
         for i in images {
-            let result = self.recognize(i, 0, 0, &options)?;
+            let result = self.recognize(i, 0, 0, &options).await?;
             results.push(result);
         }
         Ok(results)
@@ -58,40 +58,45 @@ impl OcrEngine for HttpOcrEngine {
         &self.name
     }
 
-    fn recognize(
-        &self,
-        image_data: &[u8],
+    fn recognize<'a, 'b: 'a, 'c: 'a>(
+        &'a self,
+        image_data: &'c [u8],
         _width: u32,
         _height: u32,
-        options: &OcrOptions,
-    ) -> Result<Vec<OcrResult>, Box<dyn std::error::Error>> {
-        let client = Client::new();
-        let form = Form::new()
-            .part(
-                "file",
-                Part::bytes(image_data.to_vec())
-                    .file_name("image.png")
-                    .mime_str("image/png")?,
-            )
-            .text("language", options.language.clone());
-        let response: HttpOcrResponse = client
-            .post(&self.server_url)
-            .multipart(form)
-            .timeout(Duration::from_millis(60000))
-            .send()?
-            .json()?;
+        options: &'b OcrOptions,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<OcrResult>, Box<dyn std::error::Error>>> + Send + '_>>
+    {
+        Box::pin(async move {
+            let client = Client::new();
+            let form = Form::new()
+                .part(
+                    "file",
+                    Part::bytes(image_data.to_vec())
+                        .file_name("image.png")
+                        .mime_str("image/png")?,
+                )
+                .text("language", options.language.clone());
+            let response: HttpOcrResponse = client
+                .post(&self.server_url)
+                .multipart(form)
+                .timeout(Duration::from_millis(60000))
+                .send()
+                .await?
+                .json()
+                .await?;
 
-        let results: Vec<OcrResult> = response
-            .results
-            .iter()
-            .map(|i| OcrResult {
-                text: i.text.clone(),
-                bbox: i.bbox,
-                confidence: i.confidence,
-            })
-            .collect();
+            let results: Vec<OcrResult> = response
+                .results
+                .iter()
+                .map(|i| OcrResult {
+                    text: i.text.clone(),
+                    bbox: i.bbox,
+                    confidence: i.confidence,
+                })
+                .collect();
 
-        Ok(results)
+            Ok(results)
+        })
     }
 }
 
@@ -123,13 +128,13 @@ mod tests {
         assert!(parsed.results.is_empty());
     }
 
-    #[test]
-    fn test_recognize_network_error() {
+    #[tokio::test]
+    async fn test_recognize_network_error() {
         let e = HttpOcrEngine::new("http://127.0.0.1:1/ocr".into());
         let opts = OcrOptions {
             language: "eng".into(),
         };
-        let r = e.recognize(&[0u8; 4], 1, 1, &opts);
+        let r = e.recognize(&[0u8; 4], 1, 1, &opts).await;
         assert!(r.is_err());
     }
 }
