@@ -1,19 +1,14 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/// Accepted input types for input documents.
-/// - `FilePath(String)` — A file path to a local PDF document.
-/// - `Buffer(Vec<u8>)` — A byte buffer containing the PDF data.
+#[doc(hidden)]
 #[derive(Debug, Serialize, Deserialize)]
 pub enum InputType {
     FilePath(String),
     Buffer(Vec<u8>),
 }
 
-/// Input source for PDF parsing — either a file path or raw bytes.
-///
-/// When using `Bytes`, the data is kept alive alongside the pdfium `Document`
-/// (pdfium requires the buffer to outlive the document handle).
+#[doc(hidden)]
 #[derive(Debug, Clone)]
 pub enum PdfInput {
     /// Path to a PDF file on disk.
@@ -67,7 +62,7 @@ pub struct TextItem {
     pub confidence: Option<f32>,
 }
 
-/// Represents a single page in a PDF document, including its dimensions and extracted text items.
+#[doc(hidden)]
 #[derive(Debug, Serialize)]
 pub struct Page {
     pub page_number: usize,
@@ -86,6 +81,7 @@ pub struct ParsedPage {
     pub text_items: Vec<TextItem>,
 }
 
+#[doc(hidden)]
 #[derive(Debug, Serialize)]
 pub enum Snap {
     Left,
@@ -93,6 +89,7 @@ pub enum Snap {
     Center,
 }
 
+#[doc(hidden)]
 #[derive(Debug, Serialize)]
 pub enum Anchor {
     Left,
@@ -100,7 +97,7 @@ pub enum Anchor {
     Center,
 }
 
-/// Represents a Projected piece of text, responsible for keeping track of projection related data
+#[doc(hidden)]
 #[derive(Debug, Serialize)]
 pub struct ProjectedTextItem {
     pub item: TextItem,
@@ -115,6 +112,7 @@ pub struct ProjectedTextItem {
     pub d: f32,
 }
 
+#[doc(hidden)]
 pub type AnchorMap = HashMap<i32, Vec<(usize, usize)>>;
 
 #[cfg(test)]

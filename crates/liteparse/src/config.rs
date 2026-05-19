@@ -63,7 +63,7 @@ fn default_num_workers() -> usize {
         .unwrap_or(1)
 }
 
-/// Parse a target pages string like "1-5,10,15-20" into a sorted list of page numbers.
+#[doc(hidden)]
 pub fn parse_target_pages(s: &str) -> Result<Vec<u32>, String> {
     let mut pages = Vec::new();
     for part in s.split(',') {
