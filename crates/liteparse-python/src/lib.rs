@@ -42,14 +42,14 @@ impl PyTextItem {
 }
 
 impl PyTextItem {
-    fn from_rust(item: &liteparse::types::TextItem) -> Self {
+    fn from_rust(item: liteparse::types::TextItem) -> Self {
         Self {
-            text: item.text.clone(),
+            text: item.text,
             x: item.x as f64,
             y: item.y as f64,
             width: item.width as f64,
             height: item.height as f64,
-            font_name: item.font_name.clone(),
+            font_name: item.font_name,
             font_size: item.font_size.map(|v| v as f64),
             confidence: item.confidence.map(|v| v as f64).or(Some(1.0)),
         }
@@ -85,13 +85,17 @@ impl PyParsedPage {
 }
 
 impl PyParsedPage {
-    fn from_rust(page: &liteparse::types::ParsedPage) -> Self {
+    fn from_rust(page: liteparse::types::ParsedPage) -> Self {
         Self {
             page_num: page.page_number as u32,
             width: page.page_width as f64,
             height: page.page_height as f64,
-            text: page.text.clone(),
-            text_items: page.text_items.iter().map(PyTextItem::from_rust).collect(),
+            text: page.text,
+            text_items: page
+                .text_items
+                .into_iter()
+                .map(PyTextItem::from_rust)
+                .collect(),
         }
     }
 }
@@ -126,10 +130,14 @@ impl PyParseResult {
 }
 
 impl PyParseResult {
-    fn from_rust(result: &liteparse::parser::ParseResult) -> Self {
+    fn from_rust(result: liteparse::parser::ParseResult) -> Self {
         Self {
-            pages: result.pages.iter().map(PyParsedPage::from_rust).collect(),
-            text: result.text.clone(),
+            pages: result
+                .pages
+                .into_iter()
+                .map(PyParsedPage::from_rust)
+                .collect(),
+            text: result.text,
         }
     }
 }
@@ -170,6 +178,7 @@ struct LiteParse {
     inner: liteparse::parser::LiteParse,
     config: LiteParseConfig,
     runtime: tokio::runtime::Runtime,
+    pdfium: pdfium::Library,
 }
 
 #[pymethods]
@@ -248,91 +257,95 @@ impl LiteParse {
         let inner = liteparse::parser::LiteParse::new(cfg.clone());
         let runtime = tokio::runtime::Runtime::new()
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+        let pdfium = pdfium::Library::init();
 
         Ok(Self {
             inner,
             config: cfg,
             runtime,
+            pdfium,
         })
     }
 
     /// Parse a document from a file path.
-    fn parse(&self, input: String) -> PyResult<PyParseResult> {
+    fn parse(&self, py: Python<'_>, input: String) -> PyResult<PyParseResult> {
         let pdf_input = PdfInput::Path(input);
-        let result = self
-            .runtime
-            .block_on(self.inner.parse_input(pdf_input))
+        let result = py
+            .detach(|| self.runtime.block_on(self.inner.parse_input(pdf_input)))
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
-        Ok(PyParseResult::from_rust(&result))
+        Ok(PyParseResult::from_rust(result))
     }
 
     /// Parse a document from raw bytes.
-    fn parse_bytes(&self, data: Vec<u8>) -> PyResult<PyParseResult> {
+    fn parse_bytes(&self, py: Python<'_>, data: Vec<u8>) -> PyResult<PyParseResult> {
         let pdf_input = PdfInput::Bytes(data);
-        let result = self
-            .runtime
-            .block_on(self.inner.parse_input(pdf_input))
+        let result = py
+            .detach(|| self.runtime.block_on(self.inner.parse_input(pdf_input)))
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
-        Ok(PyParseResult::from_rust(&result))
+        Ok(PyParseResult::from_rust(result))
     }
 
     /// Take screenshots of document pages. Returns a list of ScreenshotResult.
     #[pyo3(signature = (input, page_numbers = None))]
     fn screenshot(
         &self,
+        py: Python<'_>,
         input: String,
         page_numbers: Option<Vec<u32>>,
     ) -> PyResult<Vec<PyScreenshotResult>> {
         let dpi = self.config.dpi;
-        let lib = pdfium::Library::init();
-        let document = lib
-            .load_document(&input, self.config.password.as_deref())
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
-        let page_count = document.page_count() as u32;
-
-        let pages: Vec<u32> = match page_numbers {
-            Some(nums) => nums,
-            None => (1..=page_count).collect(),
-        };
-
-        let mut results = Vec::with_capacity(pages.len());
-        for page_num in pages {
-            if page_num < 1 || page_num > page_count {
-                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
-                    "page {page_num} out of range (document has {page_count} pages)"
-                )));
-            }
-            let page = document
-                .page((page_num - 1) as i32)
+        let password = self.config.password.clone();
+        py.detach(move || {
+            let document = self
+                .pdfium
+                .load_document(&input, password.as_deref())
                 .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
-            let bitmap = page
-                .render(dpi)
-                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+            let page_count = document.page_count() as u32;
 
-            let width = bitmap.width() as u32;
-            let height = bitmap.height() as u32;
-            let rgba = bitmap.to_rgba();
+            let pages: Vec<u32> = match page_numbers {
+                Some(nums) => nums,
+                None => (1..=page_count).collect(),
+            };
 
-            let mut png_buf: Vec<u8> = Vec::new();
-            let encoder = image::codecs::png::PngEncoder::new(&mut png_buf);
-            use image::ImageEncoder;
-            encoder
-                .write_image(&rgba, width, height, image::ColorType::Rgba8.into())
-                .map_err(|e| {
-                    PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
-                        "PNG encode failed: {e}"
-                    ))
+            let mut results = Vec::with_capacity(pages.len());
+            for page_num in pages {
+                if page_num < 1 || page_num > page_count {
+                    return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(format!(
+                        "page {page_num} out of range (document has {page_count} pages)"
+                    )));
+                }
+                let page = document.page((page_num - 1) as i32).map_err(|e| {
+                    PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string())
+                })?;
+                let bitmap = page.render(dpi).map_err(|e| {
+                    PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string())
                 })?;
 
-            results.push(PyScreenshotResult {
-                page_num,
-                width,
-                height,
-                image_buffer: png_buf,
-            });
-        }
+                let width = bitmap.width() as u32;
+                let height = bitmap.height() as u32;
+                let rgba = bitmap.to_rgba();
 
-        Ok(results)
+                let mut png_buf: Vec<u8> = Vec::new();
+                let encoder = image::codecs::png::PngEncoder::new(&mut png_buf);
+                use image::ImageEncoder;
+                encoder
+                    .write_image(&rgba, width, height, image::ColorType::Rgba8.into())
+                    .map_err(|e| {
+                        PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(format!(
+                            "PNG encode failed: {e}"
+                        ))
+                    })?;
+
+                results.push(PyScreenshotResult {
+                    page_num,
+                    width,
+                    height,
+                    image_buffer: png_buf,
+                });
+            }
+
+            Ok(results)
+        })
     }
 
     fn __repr__(&self) -> String {
