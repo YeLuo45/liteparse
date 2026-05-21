@@ -101,7 +101,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: packages/node
-        run: npm ci --omit=optional
+        run: npm install --ignore-scripts
 
       - name: Build native module
         working-directory: packages/node
@@ -168,7 +168,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: packages/node
-        run: npm ci --omit=optional
+        run: npm install --ignore-scripts
 
       - name: Download artifacts
         uses: actions/download-artifact@v4
@@ -278,7 +278,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: packages/node
-        run: npm ci --omit=optional
+        run: npm install --ignore-scripts
 
       - name: Build TypeScript
         working-directory: packages/node
