@@ -41,6 +41,77 @@ hard stuff so your models see clean, structured data and markdown.
 - **Multi-language**: Use from Rust, Node.js/TypeScript, Python, or the browser (WASM)
 - **Multi-platform**: Linux, macOS (Intel/ARM), Windows
 
+```mermaid
+flowchart LR                                                                                             
+      subgraph Input["Input Formats"]
+          direction TB                                                                                     
+          PDF["PDF"]                                                                                       
+          DOCX["DOCX"]                                                                                   
+          XLSX["XLSX"]
+          PPTX["PPTX"]
+          IMG["Images"]
+      end
+
+      subgraph Core["🦀 Rust Core"]
+          direction TB
+          CONV["Format Conversion\nLibreOffice / ImageMagick"]
+          EXTRACT["Text Extraction\nPDFium C library"]
+          OCR["Selective OCR\nTesseract · HTTP · Custom"]
+          MERGE["OCR Merge\nNative text + OCR results"]
+          PROJ["Grid Projection\nSpatial layout reconstruction"]
+          CONV --> EXTRACT
+          EXTRACT --> OCR --> MERGE --> PROJ
+          EXTRACT --> MERGE
+      end
+
+      subgraph Output[" Output "]
+          direction TB
+          JSON["Structured JSON\ntext + bounding boxes"]
+          TEXT["Plain Text\nlayout-preserved"]
+          SCREEN["Screenshots\nPNG rendering"]
+      end
+
+      subgraph Bindings["Language Bindings"]
+          direction TB                                                                                   
+          NAPI["Node.js / TypeScript\nnapi-rs"]
+          PYO3["Python\nPyO3"]
+          WASM["Browser / WASM\nwasm-bindgen"]
+          CLI["CLI\ncargo · npm · pip"]
+          NAPI ~~~ PYO3 ~~~ WASM ~~~ CLI
+      end
+
+      PDF --> EXTRACT
+      DOCX & XLSX & PPTX & IMG --> CONV
+      PROJ --> JSON & TEXT & SCREEN
+      JSON & TEXT & SCREEN --> Bindings
+
+      style Input fill:#0d0d0d,color:#F5F5F5,stroke:#37D7FA,stroke-width:2px
+      style Core fill:#1a0a4e,color:#F5F5F5,stroke:#3E18F9,stroke-width:2px
+      style Output fill:#1a0a4e,color:#F5F5F5,stroke:#4B72FE,stroke-width:2px
+      style Bindings fill:#0d0d0d,color:#F5F5F5,stroke:#FF8DF2,stroke-width:2px
+
+      style PDF fill:#37D7FA,color:#000000,stroke:#000000,stroke-width:1px
+      style DOCX fill:#37D7FA,color:#000000,stroke:#000000,stroke-width:1px
+      style XLSX fill:#37D7FA,color:#000000,stroke:#000000,stroke-width:1px
+      style PPTX fill:#37D7FA,color:#000000,stroke:#000000,stroke-width:1px
+      style IMG fill:#37D7FA,color:#000000,stroke:#000000,stroke-width:1px
+
+      style CONV fill:#4B72FE,color:#FFFFFF,stroke:#3E18F9,stroke-width:1px
+      style EXTRACT fill:#4B72FE,color:#FFFFFF,stroke:#3E18F9,stroke-width:1px
+      style OCR fill:#4B72FE,color:#FFFFFF,stroke:#3E18F9,stroke-width:1px
+      style MERGE fill:#4B72FE,color:#FFFFFF,stroke:#3E18F9,stroke-width:1px
+      style PROJ fill:#3E18F9,color:#FFFFFF,stroke:#37D7FA,stroke-width:2px
+
+      style JSON fill:#FF8705,color:#000000,stroke:#000000,stroke-width:1px
+      style TEXT fill:#FF8705,color:#000000,stroke:#000000,stroke-width:1px
+      style SCREEN fill:#FF8705,color:#000000,stroke:#000000,stroke-width:1px
+
+      style NAPI fill:#FF8DF2,color:#000000,stroke:#000000,stroke-width:1px
+      style PYO3 fill:#FF8DF2,color:#000000,stroke:#000000,stroke-width:1px
+      style WASM fill:#FF8DF2,color:#000000,stroke:#000000,stroke-width:1px
+      style CLI fill:#FF8DF2,color:#000000,stroke:#000000,stroke-width:1px
+```
+
 ## Installation
 
 All versions (except WASM) ship with the same CLI and library API. Install the one that fits your environment:
