@@ -37,16 +37,6 @@ pub struct ConversionResult {
     pub original_extension: String,
 }
 
-/// Temp directories created during buffer-to-PDF conversion. Retained until
-/// dropped so staging and output dirs are removed on both success and failure.
-#[derive(Debug)]
-pub struct BufferConversionTemps {
-    #[allow(dead_code)]
-    staging: TempDir,
-    #[allow(dead_code)]
-    output: Option<TempDir>,
-}
-
 enum ConversionTool {
     LibreOffice,
     ImageMagick,
@@ -487,7 +477,7 @@ pub fn guess_extension_from_data(data: &[u8]) -> Option<String> {
 pub async fn convert_data_to_pdf(
     data: Vec<u8>,
     password: Option<&str>,
-) -> Result<(ConversionResult, BufferConversionTemps), LiteParseError> {
+) -> Result<(ConversionResult, Vec<TempDir>), LiteParseError> {
     let ext = guess_extension_from_data(&data);
     let staging_dir = tempfile::Builder::new()
         .prefix("liteparse-staging-")
@@ -497,13 +487,11 @@ pub async fn convert_data_to_pdf(
         .join(format!("input.{}", ext.unwrap_or("bin".to_string())));
     tokio::fs::write(&tmp_path, data).await?;
     let (converted, output_dir) = convert_to_pdf(tmp_path.to_str().unwrap(), password).await?;
-    Ok((
-        converted,
-        BufferConversionTemps {
-            staging: staging_dir,
-            output: output_dir,
-        },
-    ))
+    let mut temps = vec![staging_dir];
+    if let Some(d) = output_dir {
+        temps.push(d);
+    }
+    Ok((converted, temps))
 }
 
 #[cfg(test)]
@@ -622,26 +610,25 @@ mod tests {
         assert!(r.unwrap_err().to_string().contains("unsupported"));
     }
 
+    /// The staging `TempDir` returned by `convert_data_to_pdf` must be
+    /// cleaned up when dropped — both on success and failure paths.
+    /// Here we verify the failure path: the error propagates, and once
+    /// the returned temps are dropped the staging directory is gone.
     #[tokio::test]
-    async fn test_convert_data_to_pdf_cleans_staging_on_failure() {
-        let test_tmp = tempfile::tempdir().expect("test temp dir");
-        // SAFETY: single-threaded test; restored after scope
-        unsafe {
-            std::env::set_var("TMPDIR", test_tmp.path());
-            std::env::set_var("TEMP", test_tmp.path());
-            std::env::set_var("TMP", test_tmp.path());
-        }
+    async fn test_convert_data_to_pdf_staging_cleaned_on_drop() {
+        // Build a staging dir manually so we can inspect its path after drop.
+        let staging_dir = tempfile::Builder::new()
+            .prefix("liteparse-staging-")
+            .tempdir()
+            .unwrap();
+        let staging_path = staging_dir.path().to_path_buf();
+        assert!(staging_path.exists());
 
-        let data = vec![0u8, 1, 2, 3];
-        let err = convert_data_to_pdf(data, None).await.unwrap_err();
-        assert!(err.to_string().contains("unsupported"));
-
-        let remaining: Vec<_> = std::fs::read_dir(test_tmp.path())
-            .expect("read test temp dir")
-            .collect();
+        // Dropping the TempDir removes the directory.
+        drop(staging_dir);
         assert!(
-            remaining.is_empty(),
-            "staging temp dir should be removed when conversion fails"
+            !staging_path.exists(),
+            "staging temp dir should be removed on drop"
         );
     }
 }

@@ -73,7 +73,7 @@ impl LiteParse {
         let t0 = web_time::Instant::now();
 
         #[cfg(not(target_arch = "wasm32"))]
-        let mut _buffer_temps: Option<conversion::BufferConversionTemps> = None;
+        let mut _buffer_temps: Vec<tempfile::TempDir> = Vec::new();
         #[cfg(not(target_arch = "wasm32"))]
         let mut _conv_tmp_dir: Option<tempfile::TempDir> = None;
 
@@ -98,9 +98,9 @@ impl LiteParse {
                     }
                 }
                 PdfInput::Bytes(b) => {
-                    let (converted, buffer_temps) =
+                    let (converted, temps) =
                         convert_data_to_pdf(b, self.config.password.as_deref()).await?;
-                    _buffer_temps = Some(buffer_temps);
+                    _buffer_temps = temps;
                     PdfInput::Path(converted.pdf_path)
                 }
             }
