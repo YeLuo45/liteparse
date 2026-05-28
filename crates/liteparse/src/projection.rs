@@ -2553,8 +2553,6 @@ fn project_to_grid(
         Vec::with_capacity(lines.iter().map(|l| l.len()).sum());
     for (line_idx, line) in lines.into_iter().enumerate() {
         for (box_idx, mut item) in line.into_iter().enumerate() {
-            item.item.x = meta[line_idx][box_idx].projected_x as f32;
-            item.item.y = line_idx as f32;
             item.force_unsnapped = meta[line_idx][box_idx].force_unsnapped;
             item.num_spaces = meta[line_idx][box_idx].should_space;
 
