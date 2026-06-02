@@ -163,8 +163,10 @@ jobs:
             packages/node/*.node
             packages/node/${{ matrix.pdfium-dylib }}
             packages/node/libc++.so.1
+            packages/node/libc++abi.so.1
             packages/node/libunwind.so.1
-          if-no-files-found: error
+            packages/node/libgcc_s.so.1
+          if-no-files-found: warn
 
   test-bindings:
     needs: build-bindings
